@@ -1,0 +1,39 @@
+name: Build
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    name: Linux (${{ matrix.compiler }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        compiler: [gcc, clang]
+    steps:
+      - uses: actions/checkout@v6
+      - name: build
+        run: make CC=${{ matrix.compiler }}
+
+  build-cross-arm:
+    name: Cross-compile (arm-linux-gnueabihf)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install cross toolchain
+        run: sudo apt-get install -y gcc-arm-linux-gnueabihf
+      - name: build
+        run: make CC=arm-linux-gnueabihf-gcc STRIP=arm-linux-gnueabihf-strip
+
+  build-cross-mips:
+    name: Cross-compile (mipsel-linux-gnu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install cross toolchain
+        run: sudo apt-get install -y gcc-mipsel-linux-gnu
+      - name: build
+        run: make CC=mipsel-linux-gnu-gcc STRIP=mipsel-linux-gnu-strip
