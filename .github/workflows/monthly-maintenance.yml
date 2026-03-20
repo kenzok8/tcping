@@ -1,0 +1,29 @@
+name: monthly-maintenance
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '55 3 1 * *'
+
+jobs:
+  build-and-audit:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: Install compiler
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.compiler }}
+
+      - name: Build
+        run: make clean && make CC=${{ matrix.compiler }}
+
+      - name: Audit stale artifacts
+        run: |
+          set -euo pipefail
+          ! find . -type d \( -name .idea -o -name .vs \) | grep .
+          ! find . -type f \( -name '*.o' -o -name '*.obj' -o -name '*.exe' \) | grep .
