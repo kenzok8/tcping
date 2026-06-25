@@ -1,9 +1,9 @@
 LDFLAGS+=
 CFLAGS+=-O3 -Wall
 
-VERSION=0.4
+VERSION=0.5
 
-OBJS=io.o error.o main.o tcp.o
+OBJS=main.o tcp.o
 
 all: tcping
 

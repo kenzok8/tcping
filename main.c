@@ -4,20 +4,22 @@
 #include <string.h>
 #include <signal.h>
 #include <unistd.h>
-#include <sys/time.h>
 #include <netdb.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 
-#include "io.h"
 #include "tcp.h"
 
-static volatile int stop = 0;
+static volatile sig_atomic_t stop = 0;
 
 void usage(void)
 {
 	fprintf(stderr, "Usage\n");
 	fprintf(stderr, "tcping [options] <destination>\n\n");
 	fprintf(stderr, "Options:\n");
-	fprintf(stderr, "  <destination>      dns name or ip address\n");
+	fprintf(stderr, "  <destination>      dns name or ip address (IPv4/IPv6)\n");
+	fprintf(stderr, "  -4                 force IPv4\n");
+	fprintf(stderr, "  -6                 force IPv6\n");
 	fprintf(stderr, "  -c <count>         count how many times to connect\n");
 	fprintf(stderr, "  -f                 flood connect (no delays)\n");
 	fprintf(stderr, "  -h                 print help and exit\n");
@@ -29,6 +31,7 @@ void usage(void)
 
 void handler(int sig)
 {
+	(void)sig;
 	stop = 1;
 }
 
@@ -41,12 +44,15 @@ int main(int argc, char *argv[])
 	int count = -1, curncount = 0;
 	int wait = 1, quiet = 0;
 	int ok = 0, err = 0;
-	double min = 999999999999999.0, avg = 0.0, max = 0.0;
-	struct hostent  *hostdnsentries;
+	int family = AF_UNSPEC;
+	double min = 0.0, avg = 0.0, max = 0.0;
+	char portstr[16];
+	struct addrinfo hints, *res = NULL;
+	int gai;
 
-		while((c = getopt(argc, argv, "p:c:i:t:fq?")) != -1)
-		{
-			switch(c)
+	while((c = getopt(argc, argv, "p:c:i:t:46fqh?")) != -1)
+	{
+		switch(c)
 		{
 		case 'p':
 			portnr = atoi(optarg);
@@ -64,6 +70,14 @@ int main(int argc, char *argv[])
 			timeout = atoi(optarg);
 			break;
 
+		case '4':
+			family = AF_INET;
+			break;
+
+		case '6':
+			family = AF_INET6;
+			break;
+
 		case 'f':
 			wait = 0;
 			break;
@@ -72,6 +86,7 @@ int main(int argc, char *argv[])
 			quiet = 1;
 			break;
 
+		case 'h':
 		case '?':
 		default:
 			usage();
@@ -80,16 +95,23 @@ int main(int argc, char *argv[])
 	}
 
 	if (optind >= argc) {
-//		fprintf(stderr, "No hostname given\n");
 		usage();
 		return 3;
 	}
 	hostname = argv[optind];
 
-	hostdnsentries = gethostbyname(hostname);
-	if (hostdnsentries == NULL)
+	snprintf(portstr, sizeof(portstr), "%d", portnr);
+
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = family;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_protocol = IPPROTO_TCP;
+	hints.ai_flags = AI_ADDRCONFIG;
+
+	gai = getaddrinfo(hostname, portstr, &hints, &res);
+	if (gai != 0)
 	{
-		fprintf(stderr, "%s: Name or service not known\n", hostname);
+		fprintf(stderr, "%s: %s\n", hostname, gai_strerror(gai));
 		return 2;
 	}
 
@@ -101,55 +123,47 @@ int main(int argc, char *argv[])
 
 	while((curncount < count || count == -1) && stop == 0)
 	{
-		double ms;
-		double dstart, dend;
-		struct timeval start, end;
-		struct timezone tz;
-		int fd;
+		double rtt = 0.0;
+		int connected = 0;
+		struct addrinfo *ai;
+		char ipstr[INET6_ADDRSTRLEN] = "";
 
-		if (gettimeofday(&start, &tz) == -1)
+		/* try the resolved addresses in order until one connects */
+		for(ai = res; ai != NULL && stop == 0; ai = ai->ai_next)
 		{
-			perror("gettimeofday");
-			break;
+			if (connect_to(ai, timeout * 1000, &rtt) == 0)
+			{
+				connected = 1;
+				getnameinfo(ai->ai_addr, ai->ai_addrlen, ipstr,
+					    sizeof(ipstr), NULL, 0, NI_NUMERICHOST);
+				break;
+			}
 		}
 
-		for(;;)
+		if (connected)
 		{
-			fd = connect_to(hostdnsentries, portnr, timeout);
-			if (fd == -1)
-			{
-				printf("error connecting to host: %s\n", strerror(errno));
-				err++;
-				break;
-			}
-
+			if (ok == 0 || rtt < min)
+				min = rtt;
+			if (rtt > max)
+				max = rtt;
+			avg += rtt;
 			ok++;
-
-			close(fd);
-
-			if (gettimeofday(&end, &tz) == -1)
-			{
-				perror("gettimeofday");
-				break;
-			}
-
-			dstart = (((double)start.tv_sec) + ((double)start.tv_usec)/1000000.0);
-			dend = (((double)end.tv_sec) + ((double)end.tv_usec)/1000000.0);
-			ms = (dend - dstart) * 1000.0;
-			avg += ms;
-			min = min > ms ? ms : min;
-			max = max < ms ? ms : max;
-
-			printf("connected to %s:%d, seq=%d time=%.2f ms\n", hostname, portnr, curncount, (dend - dstart) * 1000.0);
-
-			break;
+			printf("connected to %s:%d (%s), seq=%d time=%.2f ms\n",
+			       hostname, portnr, ipstr, curncount, rtt);
+		}
+		else
+		{
+			err++;
+			printf("error connecting to host: %s\n", strerror(errno));
 		}
 
 		curncount++;
 
-		if (curncount != count)
+		if (curncount != count && stop == 0)
 			sleep(wait);
 	}
+
+	freeaddrinfo(res);
 
 	if (!quiet)
 	{
