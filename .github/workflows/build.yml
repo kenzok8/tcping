@@ -28,12 +28,6 @@ jobs:
       - name: build
         run: make CC=arm-linux-gnueabihf-gcc STRIP=arm-linux-gnueabihf-strip
 
-  build-cross-mips:
-    name: Cross-compile (mipsel-linux-gnu)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install cross toolchain
-        run: sudo apt-get install -y gcc-mipsel-linux-gnu
-      - name: build
-        run: make CC=mipsel-linux-gnu-gcc STRIP=mipsel-linux-gnu-strip
+  # NOTE: mipsel cross-compile job removed 2026-11-21: Ubuntu 26.04
+  # (ubuntu-latest) dropped gcc-mipsel-linux-gnu (Debian 13 dropped the
+  # mipsel port). mipsel coverage continues via the OpenWrt SDK builds.
