@@ -1,9 +1,11 @@
 LDFLAGS+=
 CFLAGS+=-O3 -Wall
 
-VERSION=0.5
+VERSION=0.6
 
 OBJS=main.o tcp.o
+
+.PHONY: all install clean package
 
 all: tcping
 
@@ -12,6 +14,7 @@ tcping: $(OBJS)
 	$(if $(STRIP),$(STRIP) tcping,strip tcping)
 
 install: tcping
+	mkdir -p $(DESTDIR)/usr/bin
 	cp tcping $(DESTDIR)/usr/bin
 
 clean:

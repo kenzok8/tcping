@@ -4,10 +4,12 @@ make install
 
 
 Usage
-tcping [timeout] <destination>
+tcping [options] <destination>
 
 Options:
-  <destination>      dns name or ip address
+  <destination>      dns name or ip address (IPv4/IPv6)
+  -4                 force IPv4
+  -6                 force IPv6
   -c <count>         count how many times to connect
   -f                 flood connect (no delays)
   -h                 print help and exit
@@ -18,7 +20,7 @@ Options:
 
 tcping Return code:
 0 means can connect (at least once)
-2 if the host or service could not be resolved
+2 invalid option/argument, or host/service could not be resolved
 3 No hostname given or ip
 127 means unable to connect at all
 

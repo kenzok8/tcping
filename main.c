@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <errno.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
@@ -35,6 +36,22 @@ void handler(int sig)
 	stop = 1;
 }
 
+/* Parse a numeric option value with strict range checking.
+ * Returns 1 on success (value stored in *out), 0 on failure
+ * (garbage input, overflow, or outside [lo, hi]). */
+static int parse_num(const char *s, long lo, long hi, long *out)
+{
+	char *end = NULL;
+	long v;
+
+	errno = 0;
+	v = strtol(s, &end, 10);
+	if (errno != 0 || end == s || *end != '\0' || v < lo || v > hi)
+		return 0;
+	*out = v;
+	return 1;
+}
+
 int main(int argc, char *argv[])
 {
 	char *hostname = NULL;
@@ -55,19 +72,47 @@ int main(int argc, char *argv[])
 		switch(c)
 		{
 		case 'p':
-			portnr = atoi(optarg);
+			{
+				long v;
+				if (!parse_num(optarg, 1, 65535, &v)) {
+					fprintf(stderr, "tcping: invalid port '%s' (1-65535)\n", optarg);
+					return 2;
+				}
+				portnr = (int)v;
+			}
 			break;
 
 		case 'c':
-			count = atoi(optarg);
+			{
+				long v;
+				if (!parse_num(optarg, -1, INT_MAX, &v) || v == 0) {
+					fprintf(stderr, "tcping: invalid count '%s' (-1 or >= 1)\n", optarg);
+					return 2;
+				}
+				count = (int)v;
+			}
 			break;
 
 		case 'i':
-			wait = atoi(optarg);
+			{
+				long v;
+				if (!parse_num(optarg, 0, INT_MAX, &v)) {
+					fprintf(stderr, "tcping: invalid interval '%s' (>= 0)\n", optarg);
+					return 2;
+				}
+				wait = (int)v;
+			}
 			break;
 
 		case 't':
-			timeout = atoi(optarg);
+			{
+				long v;
+				if (!parse_num(optarg, 1, INT_MAX, &v)) {
+					fprintf(stderr, "tcping: invalid timeout '%s' (>= 1)\n", optarg);
+					return 2;
+				}
+				timeout = (int)v;
+			}
 			break;
 
 		case '4':
@@ -87,10 +132,13 @@ int main(int argc, char *argv[])
 			break;
 
 		case 'h':
+			usage();
+			return 0;
+
 		case '?':
 		default:
 			usage();
-			return 0;
+			return 2;
 		}
 	}
 
@@ -148,13 +196,15 @@ int main(int argc, char *argv[])
 				max = rtt;
 			avg += rtt;
 			ok++;
-			printf("connected to %s:%d (%s), seq=%d time=%.2f ms\n",
-			       hostname, portnr, ipstr, curncount, rtt);
+			if (!quiet)
+				printf("connected to %s:%d (%s), seq=%d time=%.2f ms\n",
+				       hostname, portnr, ipstr, curncount, rtt);
 		}
 		else
 		{
 			err++;
-			printf("error connecting to host: %s\n", strerror(errno));
+			if (!quiet)
+				fprintf(stderr, "error connecting to host: %s\n", strerror(errno));
 		}
 
 		curncount++;
